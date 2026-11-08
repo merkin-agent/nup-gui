@@ -5,6 +5,8 @@ from __future__ import annotations
 import hashlib
 
 from . import format as F
+from .access import app_meta
+from .icons import image_extension
 from .read import NupReader
 
 
@@ -20,6 +22,10 @@ def verify(path: str, deep: bool = False) -> tuple[bool, list[str]]:
         problems.append(msg)
 
     s = r.super
+    app_package = next((p for p in r.packages if p.kind == F.KIND_BASE), r.packages[0])
+    icon = app_meta(r, app_package).get(F.TLV_ICON)
+    if icon is not None and image_extension(icon) is None:
+        fail("application icon metadata is not a supported JPEG/PNG image")
     if s["toc_offset"] != F.HEADER_SIZE:
         fail(f"toc_offset {s['toc_offset']:#x} != {F.HEADER_SIZE:#x} (v1)")
     if s["file_size"] < s["blob_offset"]:

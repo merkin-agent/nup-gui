@@ -42,7 +42,10 @@ supplied NUP icon, and the build excludes unused OpenSSL/TLS modules without
 UPX packing.
 
 For the desktop interface, launch `nup-gui.exe`, choose the dump parent folder
-and output `.nup` path, then select **Create NUP**. The GUI packages the same
+and output `.nup` path, then select **Create NUP**. The packaging panel accepts
+an optional icon file, game title, and display version. If no icon is selected,
+the packer looks for common PNG/JPEG artwork names in the source and package
+`control/` folders, including Switch `icon_*.dat` assets. The GUI packages the same
 directory layouts as the `nup pack` command, preserves `.listing` files for
 round trips, and shows per-file progress while it runs. Select **Unpack NUP**
 to restore the package into `base/`, `updates/`, and `dlc/` folders. The
@@ -91,7 +94,7 @@ nup pack <dump_dir> <out.nup> [options]
 | `--publisher NAME` | publisher string in metadata. |
 | `--name NAME` | title name, default language. |
 | `--lang-name LANG=NAME` | localized title, repeatable: `--lang-name ja=ゼルダの伝説` |
-| `--icon PATH` | icon image, default language (JPEG/PNG as distributed on-console). |
+| `-i, --icon PATH` | icon image, default language (JPEG/PNG); auto-detected from artwork/control files when omitted. |
 | `--lang-icon LANG=PATH` | localized icon, repeatable. |
 | `--keep-listings` | keep dump-tool `.listing` files (excluded by default). |
 | `-q` | quiet; don't print progress. |
@@ -101,6 +104,10 @@ Notes:
 - `pack` refuses to overwrite an existing output file.
 - Name/icon/display-version/publisher metadata is attached to the `base` package, or to the
   first package in base-less dumps.
+- The icon is stored in the NUP application metadata block (TLV `0x0003`) and
+  extraction materializes it as `base/control/icon.jpg` or `icon.png`. Existing
+  control files in the package tree are preserved; iconless packages produce a
+  missing artwork warning when unpacked.
 - The build ID (NSO ModuleId - what mods/cheats tooling keys on) is derived automatically
   from `exefs/main` when present.
 - Output is deterministic for a given dump and zstd version.

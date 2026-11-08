@@ -9,10 +9,12 @@ from __future__ import annotations
 
 import os
 import re
+import sys
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING
 
 from . import format as F
+from .icons import image_extension, is_icon_filename, is_supported_image
 from .errors import OperationCancelled
 from . import meta as M
 from .read import NodeRef
@@ -158,6 +160,31 @@ def extract_tree(
     return n
 
 
+def write_control_icon(icon_data: bytes, package_dest: str) -> bool:
+    """Materialize a valid metadata icon as a conventional control asset."""
+    extension = image_extension(icon_data)
+    if extension is None:
+        print("unpack: warning: application icon metadata is not a supported JPEG/PNG image",
+              file=sys.stderr)
+        return False
+    control_dir = os.path.join(package_dest, "control")
+    os.makedirs(control_dir, exist_ok=True)
+    icon_path = os.path.join(control_dir, "icon" + extension)
+    if os.path.exists(icon_path):
+        return False
+    with open(icon_path, "wb") as stream:
+        stream.write(icon_data)
+    return True
+
+
+def has_control_icon(package_dest: str) -> bool:
+    return any(
+        is_supported_image(os.path.join(root, name))
+        for root, _dirs, filenames in os.walk(package_dest)
+        for name in filenames if is_icon_filename(name)
+    )
+
+
 def extract_dump(
     r: NupReader,
     dest: str,
@@ -265,8 +292,10 @@ def extract_dump(
         raise F.NupError("destination folder must be empty")
 
     done = 0
+    extracted_packages: list[tuple[PackageInfo, str]] = []
     for pkg, relpath in targets:
         package_dest = os.path.join(destination, relpath)
+        extracted_packages.append((pkg, package_dest))
 
         def report(_package_count: int, child: NodeRef) -> None:
             nonlocal done
@@ -276,6 +305,27 @@ def extract_dump(
                 progress(done, total, os.path.join(relpath, name))
 
         extract_tree(r, package_dest, pkg.root_dir, report, cancel)
+
+    # NUP application artwork lives in meta TLV 0x0003. Materialize it as a
+    # conventional control icon too, so dump-oriented tools retain the asset.
+    app_pkg = next((pkg for pkg, _ in extracted_packages
+                    if pkg.kind == F.KIND_BASE),
+                   extracted_packages[0][0] if extracted_packages else None)
+    icon_data = (app_meta(r, app_pkg).get(F.TLV_ICON) if app_pkg is not None else None)
+    control_icon_written = False
+    if icon_data is not None:
+        base_dest = next((path for pkg, path in extracted_packages
+                          if pkg.kind == F.KIND_BASE),
+                         extracted_packages[0][1] if extracted_packages else None)
+        if base_dest is not None:
+            control_icon_written = write_control_icon(icon_data, base_dest)
+
+    if not control_icon_written:
+        found_icon_file = any(has_control_icon(package_dest)
+                              for _pkg, package_dest in extracted_packages)
+        if not found_icon_file and icon_data is None:
+            print("unpack: warning: missing artwork metadata (no control icon found)",
+                  file=sys.stderr)
     return done
 
 

@@ -25,6 +25,9 @@ def pack_atomic(
     output: str,
     source: str,
     *,
+    icon: str | None = None,
+    name: str | None = None,
+    display_version: str | None = None,
     progress: Callable[[int, int, FileObj], None] | None = None,
     cancel: Callable[[], bool] | None = None,
     keep_listings: bool = True,
@@ -51,6 +54,9 @@ def pack_atomic(
     with tempfile.TemporaryDirectory(prefix=".nup-pack-", dir=work_parent) as work_dir:
         staged = os.path.join(work_dir, "package.nup")
         pack(staged, source, keep_listings=keep_listings,
+             icons={None: icon} if icon else None,
+             names={None: name} if name else None,
+             display_version=display_version or None,
              progress=progress, cancel=cancel)
         if cancel is not None and cancel():
             raise OperationCancelled("operation cancelled")

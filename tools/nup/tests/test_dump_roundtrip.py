@@ -5,12 +5,15 @@ import tempfile
 import threading
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
-from nup.access import extract_dump
+from nup.access import app_meta, extract_dump
+from nup import format as F
 from nup.errors import OperationCancelled
 from nup.operations import pack_atomic, unpack_atomic
 from nup.pack import pack
 from nup.read import NupReader
+from nup.verify import verify
 
 
 def file_hashes(root: Path) -> dict[str, str]:
@@ -21,6 +24,56 @@ def file_hashes(root: Path) -> dict[str, str]:
 
 
 class DumpRoundTripTests(unittest.TestCase):
+    def test_control_icon_is_auto_detected_embedded_and_extracted(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            work = Path(temporary)
+            source = work / "source"
+            (source / "base" / "romfs").mkdir(parents=True)
+            (source / "base" / "romfs" / "asset.bin").write_bytes(b"romfs data")
+            icon = b"\x89PNG\r\n\x1a\n" + b"dummy png payload"
+            icon_path = source / "base" / "control" / "icon.dat"
+            icon_path.parent.mkdir(parents=True)
+            icon_path.write_bytes(icon)
+            package = work / "icon.nup"
+
+            pack(str(package), str(source))
+            self.assertEqual(verify(str(package), deep=True), (True, []))
+            with NupReader(str(package)) as reader:
+                self.assertEqual(app_meta(reader, reader.packages[0])[F.TLV_ICON], icon)
+
+            restored = work / "restored"
+            with NupReader(str(package)) as reader:
+                extract_dump(reader, str(restored))
+            self.assertEqual((restored / "base" / "control" / "icon.png").read_bytes(), icon)
+            self.assertEqual((restored / "base" / "control" / "icon.dat").read_bytes(), icon)
+
+    def test_existing_iconless_package_can_be_unpacked_and_repacked_with_icon(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            work = Path(temporary)
+            source = work / "source"
+            (source / "base" / "romfs").mkdir(parents=True)
+            (source / "base" / "romfs" / "asset.bin").write_bytes(b"old game data")
+            original = work / "original.nup"
+            pack(str(original), str(source))
+
+            restored = work / "restored"
+            with NupReader(str(original)) as reader, patch("sys.stderr") as stderr:
+                extract_dump(reader, str(restored))
+                self.assertIn("missing artwork metadata", str(stderr.write.call_args_list))
+
+            supplied_icon = restored / "base" / "control" / "icon.jpg"
+            supplied_icon.parent.mkdir(parents=True)
+            supplied_icon.write_bytes(b"\xff\xd8\xff" + b"jpeg payload")
+            repacked = work / "repacked.nup"
+            pack(str(repacked), str(restored),
+                 names={None: "Test Game"}, display_version="1.2.3")
+            self.assertEqual(verify(str(repacked), deep=True), (True, []))
+            with NupReader(str(repacked)) as reader:
+                meta = app_meta(reader, reader.packages[0])
+                self.assertEqual(meta[F.TLV_ICON], supplied_icon.read_bytes())
+                self.assertEqual(meta[F.TLV_TITLE_NAME], b"Test Game")
+                self.assertEqual(meta[F.TLV_DISPLAY_VERSION], b"1.2.3")
+
     def test_pack_then_unpack_preserves_every_file_byte(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             work = Path(temporary)

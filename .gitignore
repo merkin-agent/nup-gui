@@ -4,5 +4,6 @@ __pycache__/
 dist/
 nup.spec
 tools/nup/build-win/
+tools/nup/build/
 tools/nup/launcher/nup.exe
 ATHOME.md

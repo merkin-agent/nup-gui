@@ -23,6 +23,7 @@ except ImportError:  # pragma: no cover
 
 from . import format as F
 from . import meta as M
+from .icons import detect_icon, is_supported_image
 from .discover import ARTIFACT_NAMES, DirObj, FILE_TAG, PackInput, Tree, discover
 from .errors import OperationCancelled
 
@@ -323,6 +324,18 @@ def pack(
         relative = os.path.relpath(os.path.abspath(pkg.src), source_root)
         if relative != ".":
             pkg.source_path = relative.replace(os.sep, "/")
+
+    # A default-language icon is application metadata, stored in TLV 0x0003.
+    # Honor an explicit path first; otherwise discover common artwork sidecars
+    # and images in the package/control trees.
+    icons = dict(icons or {})
+    if None not in icons:
+        detected = detect_icon(src, [pkg.src for pkg in packages])
+        if detected is not None:
+            icons[None] = detected
+    for icon_path in icons.values():
+        if not is_supported_image(icon_path):
+            raise SystemExit(f"pack: unsupported or unreadable icon image: {icon_path!r}")
 
     if split:
         groups = _split_groups(out_path, packages)

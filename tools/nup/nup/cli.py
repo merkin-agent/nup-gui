@@ -9,8 +9,8 @@ import time
 from typing import TYPE_CHECKING 
 
 from . import format as F
-from .access import app_meta, build_id, extract_tree, find_package, iter_children, \
-    localized_titles, resolve_path
+from .access import app_meta, build_id, extract_tree, find_package, has_control_icon, \
+    iter_children, localized_titles, resolve_path, write_control_icon
 from . import edit as edit_cmd
 from .pack import pack
 from .read import NupReader
@@ -175,6 +175,14 @@ def _cmd_extract(args: argparse.Namespace) -> int:
                 return 1
             src_dir = ref.index
         n = extract_tree(r, args.dest, src_dir)
+        if not args.subtree:
+            app_pkg = next((p for p in r.packages if p.kind == F.KIND_BASE), r.packages[0])
+            icon_data = app_meta(r, app_pkg).get(F.TLV_ICON)
+            if icon_data is not None:
+                write_control_icon(icon_data, args.dest)
+            elif not has_control_icon(args.dest):
+                print("unpack: warning: missing artwork metadata (no control icon found)",
+                      file=sys.stderr)
         print(f"extract: {n} files -> {args.dest}")
     return 0
 
@@ -216,7 +224,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--name", help="game title, default language (TLV 0x0005)")
     p.add_argument("--lang-name", action="append", metavar="LANG=NAME",
                    help="localized title, repeatable, BCP-47 tag (e.g. --lang-name ja=ゼルダ)")
-    p.add_argument("--icon", metavar="PATH", help="icon image, default language (TLV 0x0003)")
+    p.add_argument("-i", "--icon", metavar="PATH",
+                   help="icon image, default language (TLV 0x0003); auto-detected when omitted")
     p.add_argument("--lang-icon", action="append", metavar="LANG=PATH",
                    help="localized icon, repeatable (e.g. --lang-icon ja=icon_ja.dat)")
     p.add_argument("--keep-listings", action="store_true", help="keep .listing artifacts")

@@ -33,11 +33,14 @@ class NupPackagerApp:
         self.progress_mode = "indeterminate"
         self.mode = tk.StringVar(value="pack")
         self.source = tk.StringVar()
+        self.icon = tk.StringVar()
+        self.title_name = tk.StringVar()
+        self.display_version = tk.StringVar()
         self.output = tk.StringVar()
         self.status = tk.StringVar(value="Choose a dump folder to package.")
 
         root.title("NUP Packager")
-        root.geometry("800x300")
+        root.geometry("800x390")
         root.minsize(700, 280)
         root.columnconfigure(1, weight=1)
         root.protocol("WM_DELETE_WINDOW", self.close)
@@ -64,39 +67,97 @@ class NupPackagerApp:
         self.source_button = ttk.Button(root, text="Browse...", command=self.browse_source)
         self.source_button.grid(row=1, column=2, sticky="ew", padx=8, pady=8)
 
-        self.output_label = ttk.Label(root)
-        self.output_label.grid(row=2, column=0, sticky="w", padx=8, pady=8)
-        self.output_entry = ttk.Entry(root, textvariable=self.output)
-        self.output_entry.grid(row=2, column=1, sticky="ew", padx=8, pady=8)
-        self.output_button = ttk.Button(root, text="Browse...", command=self.browse_output)
-        self.output_button.grid(row=2, column=2, sticky="ew", padx=8, pady=8)
+        self.icon_label = ttk.Label(root, text="Icon file (optional)")
+        self.icon_label.grid(row=2, column=0, sticky="w", padx=8, pady=8)
+        self.icon_entry = ttk.Entry(root, textvariable=self.icon)
+        self.icon_entry.grid(row=2, column=1, sticky="ew", padx=8, pady=8)
+        self.icon_button = ttk.Button(root, text="Browse...", command=self.browse_icon)
+        self.icon_button.grid(row=2, column=2, sticky="ew", padx=8, pady=8)
 
-        ttk.Label(root, textvariable=self.status).grid(
-            row=3, column=0, columnspan=3, sticky="w", padx=8, pady=(10, 4)
+        self.title_label = ttk.Label(root, text="Game title (optional)")
+        self.title_label.grid(row=3, column=0, sticky="w", padx=8, pady=8)
+        self.title_entry = ttk.Entry(root, textvariable=self.title_name)
+        self.title_entry.grid(row=3, column=1, columnspan=2, sticky="ew", padx=8, pady=8)
+
+        self.version_label = ttk.Label(root, text="Display version (optional)")
+        self.version_label.grid(row=4, column=0, sticky="w", padx=8, pady=8)
+        self.version_entry = ttk.Entry(root, textvariable=self.display_version)
+        self.version_entry.grid(row=4, column=1, columnspan=2, sticky="ew", padx=8, pady=8)
+
+        self.output_label = ttk.Label(root)
+        self.output_label.grid(row=5, column=0, sticky="w", padx=8, pady=8)
+        self.output_entry = ttk.Entry(root, textvariable=self.output)
+        self.output_entry.grid(row=5, column=1, sticky="ew", padx=8, pady=8)
+        self.output_button = ttk.Button(root, text="Browse...", command=self.browse_output)
+        self.output_button.grid(row=5, column=2, sticky="ew", padx=8, pady=8)
+
+        self.status_label = ttk.Label(root, textvariable=self.status)
+        self.status_label.grid(
+            row=6, column=0, columnspan=3, sticky="w", padx=8, pady=(10, 4)
         )
         self.progress = ttk.Progressbar(root, mode="indeterminate", maximum=100)
-        self.progress.grid(row=4, column=0, columnspan=3, sticky="ew", padx=8, pady=5)
+        self.progress.grid(row=7, column=0, columnspan=3, sticky="ew", padx=8, pady=5)
         self.progress.grid_remove()
 
         self.action_button = ttk.Button(root, command=self.start_operation)
-        self.action_button.grid(row=5, column=2, sticky="e", padx=8, pady=10)
+        self.action_button.grid(row=8, column=2, sticky="e", padx=8, pady=10)
         self.cancel_button = ttk.Button(root, text="Cancel", command=self.cancel_operation)
-        self.cancel_button.grid(row=5, column=1, sticky="e", padx=8, pady=10)
+        self.cancel_button.grid(row=8, column=1, sticky="e", padx=8, pady=10)
         self.cancel_button.grid_remove()
         self.update_mode()
         self.root.after(100, self.drain_events)
 
     def update_mode(self) -> None:
         if self.mode.get() == "pack":
+            for widget in (self.icon_label, self.icon_entry, self.icon_button,
+                           self.title_label, self.title_entry,
+                           self.version_label, self.version_entry):
+                widget.grid()
+            self.output_label.grid(row=5, column=0, sticky="w", padx=8, pady=8)
+            self.output_entry.grid(row=5, column=1, sticky="ew", padx=8, pady=8)
+            self.output_button.grid(row=5, column=2, sticky="ew", padx=8, pady=8)
+            self.status_label.grid(row=6, column=0, columnspan=3,
+                                   sticky="w", padx=8, pady=(10, 4))
+            self.progress.grid(row=7, column=0, columnspan=3, sticky="ew", padx=8, pady=5)
+            self.progress.grid_remove()
+            self.action_button.grid(row=8, column=2, sticky="e", padx=8, pady=10)
+            self.cancel_button.grid(row=8, column=1, sticky="e", padx=8, pady=10)
+            self.cancel_button.grid_remove()
+            self.root.geometry("800x390")
             self.source_label.configure(text="Dump parent folder")
             self.output_label.configure(text="Output .nup file")
             self.action_button.configure(text="Create NUP")
             self.status.set("Choose a dump folder to package.")
         else:
+            for widget in (self.icon_label, self.icon_entry, self.icon_button,
+                           self.title_label, self.title_entry,
+                           self.version_label, self.version_entry):
+                widget.grid_remove()
+            self.output_label.grid(row=2, column=0, sticky="w", padx=8, pady=8)
+            self.output_entry.grid(row=2, column=1, sticky="ew", padx=8, pady=8)
+            self.output_button.grid(row=2, column=2, sticky="ew", padx=8, pady=8)
+            self.status_label.grid(row=3, column=0, columnspan=3,
+                                   sticky="w", padx=8, pady=(10, 4))
+            self.progress.grid(row=4, column=0, columnspan=3, sticky="ew", padx=8, pady=5)
+            self.progress.grid_remove()
+            self.action_button.grid(row=5, column=2, sticky="e", padx=8, pady=10)
+            self.cancel_button.grid(row=5, column=1, sticky="e", padx=8, pady=10)
+            self.cancel_button.grid_remove()
+            self.root.geometry("800x280")
             self.source_label.configure(text="Input .nup file")
             self.output_label.configure(text="Output dump folder")
             self.action_button.configure(text="Extract NUP")
             self.status.set("Choose a .nup file to restore as a dump folder.")
+
+    def browse_icon(self) -> None:
+        selected = filedialog.askopenfilename(
+            parent=self.root,
+            title="Choose an application icon",
+            filetypes=(("JPEG or PNG image", "*.jpg *.jpeg *.png *.dat"),
+                       ("All files", "*.*")),
+        )
+        if selected:
+            self.icon.set(selected)
 
     def browse_source(self) -> None:
         if self.mode.get() == "pack":
@@ -191,7 +252,11 @@ class NupPackagerApp:
         self.progress.grid()
         self.progress.start(12)
         threading.Thread(
-            target=self.operation_worker, args=(mode, source, output, self.cancel_event), daemon=True,
+            target=self.operation_worker,
+            args=(mode, source, output, self.cancel_event,
+                  self.icon.get().strip() or None,
+                  self.title_name.get().strip() or None,
+                  self.display_version.get().strip() or None), daemon=True,
         ).start()
 
     def cancel_operation(self) -> None:
@@ -207,6 +272,9 @@ class NupPackagerApp:
         source: Path,
         output: Path,
         cancel_event: threading.Event,
+        icon: str | None,
+        title_name: str | None,
+        display_version: str | None,
     ) -> None:
         last_report = 0.0
 
@@ -227,6 +295,7 @@ class NupPackagerApp:
 
                 pack_atomic(
                     str(output), str(source), keep_listings=True,
+                    icon=icon, name=title_name, display_version=display_version,
                     progress=pack_progress, cancel=cancel_event.is_set,
                 )
             else:
@@ -288,6 +357,7 @@ class NupPackagerApp:
         state = "normal" if enabled else "disabled"
         for control in (
             self.pack_radio, self.unpack_radio, self.source_entry, self.source_button,
+            self.icon_entry, self.icon_button, self.title_entry, self.version_entry,
             self.output_entry, self.output_button, self.action_button,
         ):
             control.configure(state=state)
