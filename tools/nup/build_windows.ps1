@@ -40,15 +40,27 @@ if ($LASTEXITCODE -ne 0) { throw 'Go is required to build nup-gui.exe.' }
 
 $launcherDir = Join-Path $projectDir 'launcher'
 $stagedCli = Join-Path $launcherDir 'nup.exe'
+$resourceFile = Join-Path $launcherDir 'resource_windows_amd64.syso'
+$iconFile = Join-Path $launcherDir 'assets/NUP_GUI_Packager.ico'
 Copy-Item (Join-Path $distDir 'nup.exe') $stagedCli -Force
 try {
+  & go run github.com/akavel/rsrc@v0.10.2 -arch amd64 -ico $iconFile -o $resourceFile
+  if ($LASTEXITCODE -ne 0) { throw 'Could not add the NUP icon resource.' }
+
   $env:GOOS = 'windows'
   $env:GOARCH = 'amd64'
+  $env:GO111MODULE = 'off'
+  Push-Location $launcherDir
+  try {
   & go build -ldflags '-H windowsgui' -o (Join-Path $distDir 'nup-gui.exe') `
-    (Join-Path $launcherDir 'main_windows.go')
+    .
   if ($LASTEXITCODE -ne 0) { throw 'Go failed to build nup-gui.exe.' }
+  } finally {
+    Pop-Location
+  }
 } finally {
   if (Test-Path $stagedCli) { Remove-Item $stagedCli -Force }
+  if (Test-Path $resourceFile) { Remove-Item $resourceFile -Force }
 }
 
 Compress-Archive -LiteralPath (Join-Path $distDir 'nup-gui.exe') `

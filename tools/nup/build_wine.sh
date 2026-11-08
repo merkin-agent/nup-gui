@@ -12,6 +12,8 @@ dist_dir="$repo_root/dist"
 work_dir="$build_root/pyinstaller-build"
 launcher_dir="$repo_root/tools/nup/launcher"
 staged_cli="$launcher_dir/nup.exe"
+resource_file="$launcher_dir/resource_windows_amd64.syso"
+icon_file="$launcher_dir/assets/NUP_GUI_Packager.ico"
 wine_bin="$(command -v wine || true)"
 if [[ -z "$wine_bin" ]]; then
   wine_bin="/usr/lib/wine/wine64"
@@ -82,10 +84,14 @@ rm -f "$dist_dir/nup.exe" "$dist_dir/nup-gui.exe" "$dist_dir/nup-gui-windows-x64
 "$wine_bin" "$(winpath "$dist_dir/nup.exe")" --help >/dev/null
 
 cp "$dist_dir/nup.exe" "$staged_cli"
-cleanup() { rm -f "$staged_cli"; }
+cleanup() { rm -f "$staged_cli" "$resource_file"; }
 trap cleanup EXIT
-GOOS=windows GOARCH=amd64 go build -ldflags='-H windowsgui' \
-  -o "$dist_dir/nup-gui.exe" "$launcher_dir/main_windows.go"
+go run github.com/akavel/rsrc@v0.10.2 -arch amd64 -ico "$icon_file" -o "$resource_file"
+(
+  cd "$launcher_dir"
+  GO111MODULE=off GOOS=windows GOARCH=amd64 go build -ldflags='-H windowsgui' \
+    -o "$dist_dir/nup-gui.exe" .
+)
 
 python3 - "$dist_dir" <<'PY'
 import sys

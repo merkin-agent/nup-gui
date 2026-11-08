@@ -37,8 +37,10 @@ GitHub Actions workflow uploads this GUI ZIP, and releases publish that ZIP at
 [GitHub Releases](https://github.com/voluptuary/nup/releases/latest).
 
 The build omits Python's unused OpenSSL/TLS modules and uses its built-in
-SHA-256 implementation. The GUI uses native Windows controls, includes the CLI
-it runs, and does not require PowerShell, Python, or an executable packer.
+SHA-256 implementation. The GUI follows the v0.1.0 launch flow: a small Go
+launcher extracts the bundled CLI and opens the Windows Forms interface through
+Windows PowerShell. It includes the supplied NUP icon and does not use UPX or
+require a separate Python installation.
 
 For example, in Command Prompt or PowerShell:
 
