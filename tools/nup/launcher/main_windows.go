@@ -105,6 +105,7 @@ type openFileName struct {
 var (
 	user32                                                       = syscall.NewLazyDLL("user32.dll")
 	kernel32                                                     = syscall.NewLazyDLL("kernel32.dll")
+	gdi32                                                        = syscall.NewLazyDLL("gdi32.dll")
 	shell32                                                      = syscall.NewLazyDLL("shell32.dll")
 	comdlg32                                                     = syscall.NewLazyDLL("comdlg32.dll")
 	commonControls                                               = syscall.NewLazyDLL("comctl32.dll")
@@ -127,7 +128,7 @@ var (
 	procGetSysColorBrush                                         = user32.NewProc("GetSysColorBrush")
 	procLoadCursor                                               = user32.NewProc("LoadCursorW")
 	procGetModuleHandle                                          = kernel32.NewProc("GetModuleHandleW")
-	procGetStockObject                                           = user32.NewProc("GetStockObject")
+	procGetStockObject                                           = gdi32.NewProc("GetStockObject")
 	procBrowseForFolder                                          = shell32.NewProc("SHBrowseForFolderW")
 	procGetPathFromID                                            = shell32.NewProc("SHGetPathFromIDListW")
 	procCoTaskMemFree                                            = ole32.NewProc("CoTaskMemFree")
