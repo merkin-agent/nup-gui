@@ -6,8 +6,10 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 build_root="${NUP_WIN_BUILD_DIR:-${TMPDIR:-/tmp}/nup-windows-build}"
 python_version="3.12.10"
+upx_version="5.2.1"
 python_dir="$build_root/python"
 wheel_dir="$build_root/wheels"
+upx_linux_dir="$build_root/upx-linux"
 dist_dir="$repo_root/dist"
 work_dir="$build_root/pyinstaller-build"
 launcher_dir="$repo_root/tools/nup/launcher"
@@ -22,7 +24,7 @@ if [[ ! -x "$wine_bin" ]]; then
 fi
 
 mkdir -p "$build_root" "$wheel_dir" "$dist_dir"
-python3 - "$python_dir" "$wheel_dir" "$work_dir" <<'PY'
+python3 - "$python_dir" "$wheel_dir" "$upx_linux_dir" "$work_dir" <<'PY'
 import shutil
 import sys
 from pathlib import Path
@@ -36,6 +38,12 @@ mkdir -p "$python_dir" "$wheel_dir"
 curl -fsSL --retry 3 \
   "https://www.python.org/ftp/python/${python_version}/python-${python_version}-embed-amd64.zip" \
   -o "$build_root/python-embed.zip"
+curl -fsSL --retry 3 \
+  "https://github.com/upx/upx/releases/download/v${upx_version}/upx-${upx_version}-amd64_linux.tar.xz" \
+  -o "$build_root/upx-linux.tar.xz"
+printf '%s  %s\n' '402162aad30af47e60dbd767fb2e64ca394ace9727ba1f40283641f1d1b91657' "$build_root/upx-linux.tar.xz" | sha256sum --check --status
+mkdir -p "$upx_linux_dir"
+tar -xJf "$build_root/upx-linux.tar.xz" -C "$upx_linux_dir" --strip-components=1
 python3 -m pip download --only-binary=:all: \
   --platform win_amd64 --python-version 312 --implementation cp --abi cp312 \
   --dest "$wheel_dir" pyinstaller zstandard pefile pywin32-ctypes
@@ -71,16 +79,21 @@ work_win="$(winpath "$work_dir")"
 mkdir -p "$work_dir"
 rm -f "$dist_dir/nup.exe" "$dist_dir/nup-gui.exe"
 
+# NUP only uses SHA-256; Python's built-in SHA implementation replaces OpenSSL.
 "$wine_bin" "$python_win" -m PyInstaller \
   --noconfirm --clean --onefile --name nup --console \
   --paths "$root_win\\tools\\nup" --collect-all zstandard \
+  --exclude-module _hashlib --exclude-module _ssl --exclude-module ssl \
   --distpath "$dist_win" --workpath "$work_win" --specpath "$work_win" \
   "$root_win\\tools\\nup\\windows_entry.py"
+
+"$wine_bin" "$(winpath "$dist_dir/nup.exe")" --help >/dev/null
 
 cp "$dist_dir/nup.exe" "$staged_cli"
 cleanup() { rm -f "$staged_cli"; }
 trap cleanup EXIT
 GOOS=windows GOARCH=amd64 go build -ldflags='-H windowsgui' \
   -o "$dist_dir/nup-gui.exe" "$launcher_dir/main_windows.go"
+"$upx_linux_dir/upx" --best "$dist_dir/nup-gui.exe"
 
 file "$dist_dir/nup.exe" "$dist_dir/nup-gui.exe"

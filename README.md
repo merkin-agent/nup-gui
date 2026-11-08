@@ -33,7 +33,13 @@ The repository builds Windows x64 executables. On Windows, run
 `tools/nup/build_wine.sh`. Both write `dist/nup.exe` (CLI) and
 `dist/nup-gui.exe` (desktop packager). You can also run the **Build Windows
 executable** workflow in GitHub Actions and download both from its
-`nup-windows-x64` artifact.
+`nup-windows-x64` artifact, or get the packaged files from
+[GitHub Releases](https://github.com/voluptuary/nup/releases/latest).
+
+The build omits Python's unused OpenSSL/TLS modules and uses its built-in
+SHA-256 implementation. It packs the GUI with UPX at build time, so the
+download stays a standalone executable and needs no separate compressor or
+Python installation.
 
 For example, in Command Prompt or PowerShell:
 
