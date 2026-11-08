@@ -14,6 +14,7 @@ launcher_dir="$repo_root/tools/nup/launcher"
 staged_cli="$launcher_dir/nup.exe"
 resource_file="$launcher_dir/resource_windows_amd64.syso"
 icon_file="$launcher_dir/assets/NUP_GUI_Packager.ico"
+manifest_file="$launcher_dir/nup-gui.exe.manifest"
 wine_bin="$(command -v wine || true)"
 if [[ -z "$wine_bin" ]]; then
   wine_bin="/usr/lib/wine/wine64"
@@ -86,10 +87,11 @@ rm -f "$dist_dir/nup.exe" "$dist_dir/nup-gui.exe" "$dist_dir/nup-gui-windows-x64
 cp "$dist_dir/nup.exe" "$staged_cli"
 cleanup() { rm -f "$staged_cli" "$resource_file"; }
 trap cleanup EXIT
-go run github.com/akavel/rsrc@v0.10.2 -arch amd64 -ico "$icon_file" -o "$resource_file"
+go run github.com/akavel/rsrc@v0.10.2 -arch amd64 \
+  -manifest "$manifest_file" -ico "$icon_file" -o "$resource_file"
 (
   cd "$launcher_dir"
-  GO111MODULE=off GOOS=windows GOARCH=amd64 go build -ldflags='-H windowsgui' \
+  GOOS=windows GOARCH=amd64 go build -ldflags='-H windowsgui -s -w' \
     -o "$dist_dir/nup-gui.exe" .
 )
 

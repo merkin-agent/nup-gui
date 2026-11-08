@@ -19,6 +19,8 @@ jobs:
       - name: Build nup.exe
         shell: pwsh
         run: ./tools/nup/build_windows.ps1
+      - name: Smoke test the native GUI message loop
+        run: python tools/nup/smoke_gui.py dist/nup-gui.exe
       - uses: actions/upload-artifact@v4
         with:
           name: nup-gui-windows-x64
