@@ -274,6 +274,7 @@ Readers must skip unknown types. Registered types:
 | 0x0008 | Source dump name | UTF-8, provenance |
 | 0x0009 | Localized titles | repeated `LocalizedRecord`s (§5.1); `lang` MUST NOT be empty |
 | 0x000A | Localized icons | repeated `LocalizedRecord`s (§5.1); image bytes as for 0x0003 |
+| 0x000B | Source package path | UTF-8 relative package directory from the original dump, when available; readers MUST treat it as untrusted path data |
 | 0x0100–0x7FFF | reserved for future spec versions | readers skip |
 | 0x8000–0xFFFF | vendor/tool private | readers skip |
 

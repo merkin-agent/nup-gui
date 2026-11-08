@@ -18,6 +18,8 @@ jobs:
         run: ./tools/nup/build_windows.ps1
       - name: Smoke test the Windows GUI event loop
         run: python tools/nup/smoke_gui.py dist/nup-gui.exe
+      - name: Verify pack and unpack preserve file bytes
+        run: python -m unittest discover -s tools/nup/tests -v
       - uses: actions/upload-artifact@v4
         with:
           name: nup-gui-windows-x64

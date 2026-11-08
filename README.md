@@ -43,7 +43,11 @@ UPX packing.
 
 For the desktop interface, launch `nup-gui.exe`, choose the dump parent folder
 and output `.nup` path, then select **Create NUP**. The GUI packages the same
-directory layouts as the `nup pack` command and shows progress while it runs.
+directory layouts as the `nup pack` command, preserves `.listing` files for
+round trips, and shows per-file progress while it runs. Select **Unpack NUP**
+to restore the package into `base/`, `updates/`, and `dlc/` folders. The
+packager stores the original package paths so add-on directory indexes are
+restored too; unpacking older NUPs without that metadata uses generated indexes.
 
 ### Recreating the Codespace
 

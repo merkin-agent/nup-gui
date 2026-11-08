@@ -301,6 +301,11 @@ def pack(
               file=sys.stderr)
 
     packages = discover(src, base_title_id)
+    source_root = os.path.abspath(src)
+    for pkg in packages:
+        relative = os.path.relpath(os.path.abspath(pkg.src), source_root)
+        if relative != ".":
+            pkg.source_path = relative.replace(os.sep, "/")
 
     if split:
         groups = _split_groups(out_path, packages)

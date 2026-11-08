@@ -67,6 +67,7 @@ class PackInput:
     flags: int = 0
     npdm: bytes | None = None
     build_id: bytes | None = None
+    source_path: str | None = None
 
 
 def _find_npdm(src: str) -> str | None:

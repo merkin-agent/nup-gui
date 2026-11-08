@@ -19,6 +19,7 @@ class MetaSource(Protocol):
 
     npdm: bytes | None
     build_id: bytes | None
+    source_path: str | None
 
 
 def read_file(path: str) -> bytes:
@@ -121,6 +122,8 @@ def meta_block(pkg: MetaSource, dump_label: str, app_extra: bytes = b"") -> byte
         recs.append((F.TLV_NPDM, pkg.npdm))
     if pkg.build_id:
         recs.append((F.TLV_BUILD_ID, pkg.build_id))
+    if pkg.source_path:
+        recs.append((F.TLV_SOURCE_PACKAGE_PATH, pkg.source_path.encode("utf-8")))
     recs.append((F.TLV_SOURCE_DUMP, dump_label.encode("utf-8")))
     if app_extra:
         # merge prebuilt application-level TLVs (names/icons/display version)

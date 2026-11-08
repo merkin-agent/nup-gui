@@ -8,6 +8,8 @@ Functions take the reader as their first argument.
 from __future__ import annotations
 
 import os
+import re
+from pathlib import PurePosixPath
 from typing import TYPE_CHECKING
 
 from . import format as F
@@ -151,3 +153,118 @@ def extract_tree(
                 if progress:
                     progress(n, child)
     return n
+
+
+def extract_dump(
+    r: NupReader,
+    dest: str,
+    progress: Callable[[int, int, str], None] | None = None,
+) -> int:
+    """Extract every package into the canonical base/updates/dlc layout.
+
+    Original canonical package paths are restored from optional provenance
+    metadata. Older NUP files without it get canonical paths synthesized from
+    their package records.
+    """
+    targets: list[tuple[PackageInfo, str]] = []
+    addon_indexes: dict[int, int] = {}
+    for pkg in r.packages:
+        fallback: str
+        if pkg.kind == F.KIND_BASE:
+            fallback = "base"
+        elif pkg.kind == F.KIND_UPDATE:
+            fallback = f"updates/{pkg.version}"
+        elif pkg.kind == F.KIND_ADDON:
+            index = addon_indexes.get(pkg.title_id, 0)
+            addon_indexes[pkg.title_id] = index + 1
+            fallback = f"dlc/{pkg.title_id:016x}/{index}"
+        else:
+            raise F.NupError(
+                f"cannot map package kind {pkg.kind_name!r} to the standard dump layout")
+        source_path = next(
+            (payload for kind, payload in meta_records(r, pkg)
+             if kind == F.TLV_SOURCE_PACKAGE_PATH),
+            None,
+        )
+        relpath = fallback
+        if source_path:
+            try:
+                candidate = source_path.decode("utf-8")
+            except UnicodeDecodeError:
+                candidate = ""
+            parts = PurePosixPath(candidate).parts
+            valid = (
+                not PurePosixPath(candidate).is_absolute()
+                and candidate == "/".join(parts)
+                and all(_valid_windows_component(part) for part in parts)
+            )
+            if pkg.kind == F.KIND_BASE:
+                valid = valid and candidate == "base"
+            elif pkg.kind == F.KIND_UPDATE:
+                valid = (valid and len(parts) == 2 and parts[0] == "updates"
+                         and parts[1].isdigit() and int(parts[1]) == pkg.version)
+            else:
+                valid = (valid and len(parts) == 3 and parts[0] == "dlc"
+                         and re.fullmatch(r"[0-9a-fA-F]{16}", parts[1]) is not None
+                         and int(parts[1], 16) == pkg.title_id and parts[2].isdigit())
+            if valid:
+                relpath = os.path.join(*parts)
+        targets.append((pkg, relpath))
+
+    # Validate all package paths and NUP tree components before writing any files.
+    target_names: set[str] = set()
+    total = 0
+    for pkg, relpath in targets:
+        if relpath.casefold() in target_names:
+            raise F.NupError(f"multiple packages map to {relpath!r}")
+        target_names.add(relpath.casefold())
+        stack = [pkg.root_dir]
+        visited_dirs: set[int] = set()
+        while stack:
+            di = stack.pop()
+            if di in visited_dirs:
+                raise F.NupError(f"package {pkg.index}: directory tree contains a cycle or alias")
+            visited_dirs.add(di)
+            children = iter_children(r, di)
+            folded_names: set[str] = set()
+            for child in children:
+                name = child.name.decode("utf-8", "surrogateescape")
+                if not _valid_windows_component(name):
+                    raise F.NupError(f"unsafe or Windows-incompatible path component {child.name!r}")
+                if name.casefold() in folded_names:
+                    raise F.NupError(
+                        f"Windows case-insensitive path collision in directory {di}: {name!r}")
+                folded_names.add(name.casefold())
+                if child.is_dir:
+                    stack.append(child.index)
+                else:
+                    total += 1
+
+    destination = os.path.abspath(dest)
+    os.makedirs(destination, exist_ok=True)
+    if os.listdir(destination):
+        raise F.NupError("destination folder must be empty")
+
+    done = 0
+    for pkg, relpath in targets:
+        package_dest = os.path.join(destination, relpath)
+
+        def report(_package_count: int, child: NodeRef) -> None:
+            nonlocal done
+            done += 1
+            if progress:
+                name = child.name.decode("utf-8", "replace")
+                progress(done, total, os.path.join(relpath, name))
+
+        extract_tree(r, package_dest, pkg.root_dir, report)
+    return done
+
+
+def _valid_windows_component(name: str) -> bool:
+    return bool(
+        name and name not in (".", "..") and len(name) <= 255
+        and name[-1] not in (".", " ")
+        and not any(ord(c) < 32 or 0xD800 <= ord(c) <= 0xDFFF
+                    or c in '<>:"/\\|?*' for c in name)
+        and re.fullmatch(r"(?i:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?", name) is None
+    )
