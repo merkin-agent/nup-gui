@@ -24,5 +24,5 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: nup-gui-windows-x64
-          path: dist/nup-gui-windows-x64.zip
+          path: dist/nup-gui.exe
           if-no-files-found: error
