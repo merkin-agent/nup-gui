@@ -37,8 +37,8 @@ GitHub Actions workflow uploads this GUI ZIP, and releases publish that ZIP at
 [GitHub Releases](https://github.com/voluptuary/nup/releases/latest).
 
 The build omits Python's unused OpenSSL/TLS modules and uses its built-in
-SHA-256 implementation. The GUI includes the CLI it runs and does not use an
-executable packer or require a separate Python installation.
+SHA-256 implementation. The GUI uses native Windows controls, includes the CLI
+it runs, and does not require PowerShell, Python, or an executable packer.
 
 For example, in Command Prompt or PowerShell:
 
