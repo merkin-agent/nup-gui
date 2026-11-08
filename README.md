@@ -28,29 +28,22 @@ nup --help                       # overview of every subcommand
 
 ### Windows executable
 
-The repository builds Windows x64 executables. On Windows, run
+The repository builds a Windows x64 GUI executable. On Windows, run
 `tools/nup/build_windows.ps1`; from the configured Linux devcontainer, run
-`tools/nup/build_wine.sh`. Both write `dist/nup.exe` (CLI) and
-`dist/nup-gui.exe` (desktop packager), plus
+`tools/nup/build_wine.sh`. Both write `dist/nup-gui.exe` and
 `dist/nup-gui-windows-x64.zip`, which contains only the GUI executable. The
 GitHub Actions workflow uploads this GUI ZIP, and releases publish that ZIP at
 [GitHub Releases](https://github.com/voluptuary/nup/releases/latest).
 
-The build omits Python's unused OpenSSL/TLS modules and uses its built-in
-SHA-256 implementation. The GUI uses native Windows controls, includes the
-bundled CLI and supplied NUP icon, and does not require PowerShell, Python, or
-UPX.
-
-For example, in Command Prompt or PowerShell:
-
-```
-nup.exe pack "D:\Switch2\My Game Dump" "D:\Switch2\My Game.nup"
-nup.exe info "D:\Switch2\My Game.nup"
-```
+The GUI is a single-file Tkinter application packaged with PyInstaller. Its
+background worker calls the NUP packer directly, so it does not launch
+PowerShell or require a separate Python installation. The executable uses the
+supplied NUP icon, and the build excludes unused OpenSSL/TLS modules without
+UPX packing.
 
 For the desktop interface, launch `nup-gui.exe`, choose the dump parent folder
 and output `.nup` path, then select **Create NUP**. The GUI packages the same
-directory layouts as `nup.exe pack` and shows progress while it runs.
+directory layouts as the `nup pack` command and shows progress while it runs.
 
 ### Recreating the Codespace
 

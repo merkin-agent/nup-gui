@@ -1,4 +1,4 @@
-"""Windows-runner smoke check for NUP Packager's native message loop."""
+"""Windows-runner smoke check for NUP Packager's Tk event loop."""
 
 from __future__ import annotations
 
@@ -45,7 +45,7 @@ def main() -> None:
         callback_type = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
         callback = callback_type(lambda child, _data: children.append(child) or True)
         user32.EnumChildWindows(hwnd, callback, 0)
-        if len(children) < 8:
+        if len(children) < 5:
             raise RuntimeError(f"GUI opened with only {len(children)} child controls")
 
         if not user32.PostMessageW(hwnd, 0x0010, 0, 0):  # WM_CLOSE
@@ -56,7 +56,7 @@ def main() -> None:
             raise RuntimeError("GUI did not close in response to WM_CLOSE") from exc
         if process.returncode != 0:
             raise RuntimeError(f"GUI exited with code {process.returncode} after WM_CLOSE")
-        print("Native GUI opened, responded to Windows messages, and closed cleanly.")
+        print("Tk GUI opened, responded to Windows messages, and closed cleanly.")
     finally:
         if process.poll() is None:
             process.terminate()
