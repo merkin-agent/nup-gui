@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"syscall"
+	"unicode/utf16"
 	"unsafe"
 )
 
@@ -271,7 +272,7 @@ func browseOutput() {
 		chars, _ := syscall.UTF16FromString(current)
 		copy(name, chars)
 	}
-	filter := mustUTF16("NUP package (*.nup)\x00*.nup\x00All files (*.*)\x00*.*\x00\x00")
+	filter := mustUTF16Multi("NUP package (*.nup)\x00*.nup\x00All files (*.*)\x00*.*\x00\x00")
 	title := mustUTF16("Save NUP package")
 	ext := mustUTF16("nup")
 	dialog := openFileName{size: uint32(unsafe.Sizeof(openFileName{})), owner: window,
@@ -360,8 +361,12 @@ func setText(hwnd uintptr, value string) {
 	procSetWindowText.Call(hwnd, uintptr(unsafe.Pointer(text)))
 }
 func mustUTF16(value string) *uint16 { result, _ := syscall.UTF16PtrFromString(value); return result }
-func showError(message string)       { showMessage(message, "NUP Packager", mbIconError) }
-func showInfo(message string)        { showMessage(message, "NUP created", mbIconInfo) }
+func mustUTF16Multi(value string) *uint16 {
+	result := utf16.Encode([]rune(value))
+	return &result[0]
+}
+func showError(message string) { showMessage(message, "NUP Packager", mbIconError) }
+func showInfo(message string)  { showMessage(message, "NUP created", mbIconInfo) }
 func showMessage(message, title string, icon uintptr) {
 	messagePtr, titlePtr := mustUTF16(message), mustUTF16(title)
 	procMessageBox.Call(window, uintptr(unsafe.Pointer(messagePtr)), uintptr(unsafe.Pointer(titlePtr)), mbOK|icon)
