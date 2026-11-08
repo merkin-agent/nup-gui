@@ -24,6 +24,7 @@ except ImportError:  # pragma: no cover
 from . import format as F
 from . import meta as M
 from .discover import ARTIFACT_NAMES, DirObj, FILE_TAG, PackInput, Tree, discover
+from .errors import OperationCancelled
 
 if TYPE_CHECKING:
     from .discover import FileObj
@@ -33,6 +34,11 @@ if TYPE_CHECKING:
 
 def have_zstd() -> bool:
     return zstandard is not None
+
+
+def _check_cancel(cancel: Callable[[], bool] | None) -> None:
+    if cancel is not None and cancel():
+        raise OperationCancelled("operation cancelled")
 
 
 def _locate_content_dirs(packages: list[PackInput],
@@ -88,11 +94,13 @@ def _write_extents(
     zc: zstandard.ZstdCompressor | None,
     blob_cursor: int,
     progress: Callable[[int, int, FileObj], None] | None = None,
+    cancel: Callable[[], bool] | None = None,
 ) -> int:
     """Append file extents (dedup by hash, 16-byte aligned). Returns end offset."""
     total = len(tree.files)
     seen: dict[bytes, tuple[int, int, int]] = {}  # sha256 -> (offset, size, codec)
     for i, fnode in enumerate(tree.files):
+        _check_cancel(cancel)
         with open(fnode.src_path, "rb") as fh:
             fnode.size = os.path.getsize(fnode.src_path)
 
@@ -100,6 +108,7 @@ def _write_extents(
             h = hashlib.sha256()
             left = fnode.size
             while left:
+                _check_cancel(cancel)
                 chunk = fh.read(min(_STREAM_CHUNK, left))
                 if not chunk:
                     raise SystemExit(
@@ -126,9 +135,11 @@ def _write_extents(
                     # Small enough to hold in RAM; one-shot keeps frames
                     # byte-identical with earlier builds.
                     data = fh.read()
+                    _check_cancel(cancel)
                     payload, codec = data, F.CODEC_RAW
                     if zc is not None:
                         comp = zc.compress(data)
+                        _check_cancel(cancel)
                         if len(comp) < fnode.size:
                             payload, codec = comp, F.CODEC_ZSTD
                     out.write(payload)
@@ -145,6 +156,7 @@ def _write_extents(
                         bail = False
                         left = fnode.size
                         while left and not bail:
+                            _check_cancel(cancel)
                             chunk = fh.read(min(_STREAM_CHUNK, left))
                             if not chunk:
                                 raise SystemExit(
@@ -160,6 +172,7 @@ def _write_extents(
                                     # final frame cannot end up smaller
                                     bail = True
                         if not bail:
+                            _check_cancel(cancel)
                             piece = co.flush()
                             if piece:
                                 out.write(piece)
@@ -172,6 +185,7 @@ def _write_extents(
                         fh.seek(0)  # the bailed compression pass left the input mid-file
                         left = fnode.size
                         while left:
+                            _check_cancel(cancel)
                             chunk = fh.read(min(_STREAM_CHUNK, left))
                             if not chunk:
                                 raise SystemExit(
@@ -295,12 +309,15 @@ def pack(
     icons: dict[str | None, str] | None = None,
     split: bool = False,
     progress: Callable[[int, int, FileObj], None] | None = None,
+    cancel: Callable[[], bool] | None = None,
 ) -> list[PackInput]:
     if not have_zstd():
         print("pack: warning: zstandard not installed; writing raw (uncompressed) extents",
               file=sys.stderr)
 
-    packages = discover(src, base_title_id)
+    _check_cancel(cancel)
+    packages = discover(src, base_title_id, cancel)
+    _check_cancel(cancel)
     source_root = os.path.abspath(src)
     for pkg in packages:
         relative = os.path.relpath(os.path.abspath(pkg.src), source_root)
@@ -330,6 +347,7 @@ def pack(
             level=level,
             keep_listings=keep_listings,
             progress=progress,
+            cancel=cancel,
             **meta,
         )
     return packages
@@ -347,6 +365,7 @@ def _pack_container(
     names: dict[str | None, str] | None = None,
     icons: dict[str | None, str] | None = None,
     progress: Callable[[int, int, FileObj], None] | None = None,
+    cancel: Callable[[], bool] | None = None,
 ) -> list[PackInput]:
     if os.path.exists(out_path):
         raise SystemExit(f"pack: refusing to overwrite {out_path}")
@@ -359,7 +378,8 @@ def _pack_container(
                 p.flags |= F.PKG_FLAG_STANDALONE_UPDATE
 
     artifacts = set() if keep_listings else ARTIFACT_NAMES
-    tree = Tree(artifacts)
+    _check_cancel(cancel)
+    tree = Tree(artifacts, cancel=cancel)
     roots = [tree.add_tree(pkg.src) for pkg in packages]
     tree.assign(roots)
 
@@ -386,7 +406,8 @@ def _pack_container(
 
     with open(out_path, "wb") as out:
         out.write(b"\0" * blob_offset)  # placeholder for header + TOC
-        blob_cursor = _write_extents(out, tree, zc, blob_offset, progress)
+        blob_cursor = _write_extents(out, tree, zc, blob_offset, progress, cancel)
+        _check_cancel(cancel)
         dump_label = os.path.basename(os.path.normpath(src))
         meta_offsets, blob_cursor = _write_meta_blocks(out, packages, dump_label,
                                                        names, icons, display_version,

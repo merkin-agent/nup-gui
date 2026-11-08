@@ -12,9 +12,13 @@ from dataclasses import dataclass, field
 import os
 import re
 import struct
-from typing import Final
+from typing import TYPE_CHECKING, Final
 
 from . import format as F
+from .errors import OperationCancelled
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 # SPEC §6.3 reserved artifact names
 ARTIFACT_NAMES: Final = {b".listing"}
@@ -95,7 +99,12 @@ def _read_build_id(src: str) -> bytes | None:
     return None
 
 
-def _resolve_title_id(pkg: PackInput, override: int | None) -> None:
+def _resolve_title_id(
+    pkg: PackInput,
+    override: int | None,
+    cancel: Callable[[], bool] | None = None,
+) -> None:
+    _check_cancel(cancel)
     npdm_path = _find_npdm(pkg.src)
     if npdm_path:
         with open(npdm_path, "rb") as fh:
@@ -104,6 +113,7 @@ def _resolve_title_id(pkg: PackInput, override: int | None) -> None:
         if pid is not None and pid != 0:
             pkg.title_id = pid
     pkg.build_id = _read_build_id(pkg.src)
+    _check_cancel(cancel)
     if override is not None:
         pkg.title_id = override
 
@@ -112,48 +122,65 @@ def _looks_like_content(d: str) -> bool:
     return os.path.isdir(os.path.join(d, "exefs")) or os.path.isdir(os.path.join(d, "romfs"))
 
 
-def _has_files(d: str) -> bool:
+def _has_files(d: str, cancel: Callable[[], bool] | None = None) -> bool:
     """True when a package dir contains at least one packable file. Dump-tool
     artifacts don't count, and neither do folders that only hold empty dirs -
     an exefs/ folder with no files is not a usable ExeFS, and a package whose
     record points at one misleads consumers (they treat it as the ExeFS)."""
     for _, _, filenames in os.walk(d):
+        _check_cancel(cancel)
         for name in filenames:
+            _check_cancel(cancel)
             if name != ".listing":
                 return True
     return False
 
 
-def _collect_updates(upd_dir: str, base_title_id: int, flags: int) -> list[PackInput]:
+def _collect_updates(
+    upd_dir: str,
+    base_title_id: int,
+    flags: int,
+    cancel: Callable[[], bool] | None = None,
+) -> list[PackInput]:
     """updates/<decimal version>/ content dirs; flags propagates standalone_update."""
     out: list[PackInput] = []
     for name in sorted(os.listdir(upd_dir)):
+        _check_cancel(cancel)
         p = os.path.join(upd_dir, name)
-        if not _DEC.match(name) or not os.path.isdir(p) or not _has_files(p):
+        if not _DEC.match(name) or not os.path.isdir(p) or not _has_files(p, cancel):
             continue
         upd = PackInput(F.KIND_UPDATE, p, version=int(name, 10), flags=flags)
-        _resolve_title_id(upd, None)
+        _resolve_title_id(upd, None, cancel)
         if upd.title_id == 0:
             upd.title_id = base_title_id
         out.append(upd)
     return out
 
 
-def _collect_dlcs(dlc_dir: str) -> list[PackInput]:
+def _collect_dlcs(
+    dlc_dir: str,
+    cancel: Callable[[], bool] | None = None,
+) -> list[PackInput]:
     """dlc/<16-hex title id>/<index>/ content dirs (SPEC §3.1.2 addon ids)."""
     out: list[PackInput] = []
     for name in sorted(os.listdir(dlc_dir)):
+        _check_cancel(cancel)
         tdir = os.path.join(dlc_dir, name)
         if not _HEX.match(name) or not os.path.isdir(tdir):
             continue
         for idx in sorted(os.listdir(tdir)):
+            _check_cancel(cancel)
             cdir = os.path.join(tdir, idx)
-            if os.path.isdir(cdir) and _has_files(cdir):
+            if os.path.isdir(cdir) and _has_files(cdir, cancel):
                 out.append(PackInput(F.KIND_ADDON, cdir, title_id=int(name, 16)))
     return out
 
 
-def discover(src: str, base_title_id: int | None) -> list[PackInput]:
+def discover(
+    src: str,
+    base_title_id: int | None,
+    cancel: Callable[[], bool] | None = None,
+) -> list[PackInput]:
     """Discover packages in a dump directory (SPEC §3.1.3 conventions)."""
     packages: list[PackInput] = []
     upd_dir = os.path.join(src, "updates")
@@ -161,28 +188,31 @@ def discover(src: str, base_title_id: int | None) -> list[PackInput]:
 
     if os.path.isdir(os.path.join(src, "base")):
         base = PackInput(F.KIND_BASE, os.path.join(src, "base"))
-        _resolve_title_id(base, base_title_id)
-        if _has_files(base.src):
+        _resolve_title_id(base, base_title_id, cancel)
+        if _has_files(base.src, cancel):
             packages.append(base)
             if has_updates:
-                packages.extend(_collect_updates(upd_dir, base.title_id, flags=0))
+                packages.extend(_collect_updates(upd_dir, base.title_id, flags=0,
+                                                 cancel=cancel))
         elif has_updates:
             # an empty base/ is not a game: drop it so a real update can boot
             # as the standalone program instead of hiding behind a dead base
             packages.extend(_collect_updates(upd_dir, base_title_id or 0,
-                                             flags=F.PKG_FLAG_STANDALONE_UPDATE))
+                                             flags=F.PKG_FLAG_STANDALONE_UPDATE,
+                                             cancel=cancel))
         dlc_dir = os.path.join(src, "dlc")
         if os.path.isdir(dlc_dir):
-            packages.extend(_collect_dlcs(dlc_dir))
+            packages.extend(_collect_dlcs(dlc_dir, cancel))
     elif has_updates:
         # Update-only dump:
         # every update package carries standalone_update (SPEC §3.1.2, flags
         # bit 0 at offset 0x19). DLC may still ride along in dlc/.
         packages.extend(_collect_updates(upd_dir, base_title_id or 0,
-                                         flags=F.PKG_FLAG_STANDALONE_UPDATE))
+                                         flags=F.PKG_FLAG_STANDALONE_UPDATE,
+                                         cancel=cancel))
         dlc_dir = os.path.join(src, "dlc")
         if os.path.isdir(dlc_dir):
-            packages.extend(_collect_dlcs(dlc_dir))
+            packages.extend(_collect_dlcs(dlc_dir, cancel))
     elif _looks_like_content(src):
         base = PackInput(F.KIND_BASE, src)
         _resolve_title_id(base, base_title_id)
@@ -196,11 +226,17 @@ def discover(src: str, base_title_id: int | None) -> list[PackInput]:
     return packages
 
 
+def _check_cancel(cancel: Callable[[], bool] | None) -> None:
+    if cancel is not None and cancel():
+        raise OperationCancelled("operation cancelled")
+
+
 @dataclass(slots=True)
 class Tree:
     """Node store for one pack run (global across packages)."""
 
     artifacts: set[bytes]
+    cancel: Callable[[], bool] | None = field(default=None, repr=False)
     dirs: list[DirObj] = field(default_factory=list)
     files: list[FileObj] = field(default_factory=list)
     # serial ids; see assign()
@@ -222,6 +258,7 @@ class Tree:
         return self._walk(src, b"")
 
     def _walk(self, src: str, name: bytes) -> DirObj:
+        _check_cancel(self.cancel)
         node = DirObj(name)
         try:
             entries = sorted(os.scandir(src),
@@ -229,6 +266,7 @@ class Tree:
         except OSError as exc:
             raise SystemExit(f"pack: cannot read {src}: {exc}")
         for entry in entries:
+            _check_cancel(self.cancel)
             ename = entry.name.encode("utf-8", "surrogateescape")
             if entry.is_dir(follow_symlinks=False):
                 node.children.append(self._walk(entry.path, ename))

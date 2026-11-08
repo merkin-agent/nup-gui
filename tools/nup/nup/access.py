@@ -13,6 +13,7 @@ from pathlib import PurePosixPath
 from typing import TYPE_CHECKING
 
 from . import format as F
+from .errors import OperationCancelled
 from . import meta as M
 from .read import NodeRef
 
@@ -133,6 +134,7 @@ def extract_tree(
     dest: str,
     dir_index: int,
     progress: Callable[[int, NodeRef], None] | None = None,
+    cancel: Callable[[], bool] | None = None,
 ) -> int:
     """Extract a directory subtree to dest. Returns number of files written."""
     n = 0
@@ -142,13 +144,14 @@ def extract_tree(
         di, dpath = stack.pop()
         os.makedirs(dpath, exist_ok=True)
         for child in iter_children(r, di):
+            if cancel is not None and cancel():
+                raise OperationCancelled("operation cancelled")
             cpath = os.path.join(dpath, child.name.decode("utf-8", "surrogateescape"))
             if child.is_dir:
                 stack.append((child.index, cpath))
             else:
-                data = r.read_file(child.index)
                 with open(cpath, "wb") as fh:
-                    fh.write(data)
+                    r.copy_file(child.index, fh, cancel)
                 n += 1
                 if progress:
                     progress(n, child)
@@ -159,6 +162,7 @@ def extract_dump(
     r: NupReader,
     dest: str,
     progress: Callable[[int, int, str], None] | None = None,
+    cancel: Callable[[], bool] | None = None,
 ) -> int:
     """Extract every package into the canonical base/updates/dlc layout.
 
@@ -169,6 +173,8 @@ def extract_dump(
     targets: list[tuple[PackageInfo, str]] = []
     addon_indexes: dict[int, int] = {}
     for pkg in r.packages:
+        if cancel is not None and cancel():
+            raise OperationCancelled("operation cancelled")
         fallback: str
         if pkg.kind == F.KIND_BASE:
             fallback = "base"
@@ -214,6 +220,8 @@ def extract_dump(
     # Validate all package paths and NUP tree components before writing any files.
     target_names: set[str] = set()
     total = 0
+    reachable_dirs: set[int] = set()
+    reachable_files: set[int] = set()
     for pkg, relpath in targets:
         if relpath.casefold() in target_names:
             raise F.NupError(f"multiple packages map to {relpath!r}")
@@ -221,13 +229,18 @@ def extract_dump(
         stack = [pkg.root_dir]
         visited_dirs: set[int] = set()
         while stack:
+            if cancel is not None and cancel():
+                raise OperationCancelled("operation cancelled")
             di = stack.pop()
             if di in visited_dirs:
                 raise F.NupError(f"package {pkg.index}: directory tree contains a cycle or alias")
             visited_dirs.add(di)
+            reachable_dirs.add(di)
             children = iter_children(r, di)
             folded_names: set[str] = set()
             for child in children:
+                if cancel is not None and cancel():
+                    raise OperationCancelled("operation cancelled")
                 name = child.name.decode("utf-8", "surrogateescape")
                 if not _valid_windows_component(name):
                     raise F.NupError(f"unsafe or Windows-incompatible path component {child.name!r}")
@@ -238,7 +251,13 @@ def extract_dump(
                 if child.is_dir:
                     stack.append(child.index)
                 else:
+                    reachable_files.add(child.index)
                     total += 1
+
+    if len(reachable_dirs) != r.dir_count:
+        raise F.NupError("NUP contains unreachable directories; refusing to omit them")
+    if len(reachable_files) != r.file_count:
+        raise F.NupError("NUP contains unreachable files; refusing to omit them")
 
     destination = os.path.abspath(dest)
     os.makedirs(destination, exist_ok=True)
@@ -256,7 +275,7 @@ def extract_dump(
                 name = child.name.decode("utf-8", "replace")
                 progress(done, total, os.path.join(relpath, name))
 
-        extract_tree(r, package_dest, pkg.root_dir, report)
+        extract_tree(r, package_dest, pkg.root_dir, report, cancel)
     return done
 
 

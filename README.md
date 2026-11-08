@@ -48,6 +48,9 @@ round trips, and shows per-file progress while it runs. Select **Unpack NUP**
 to restore the package into `base/`, `updates/`, and `dlc/` folders. The
 packager stores the original package paths so add-on directory indexes are
 restored too; unpacking older NUPs without that metadata uses generated indexes.
+Select **Cancel** to stop at a safe file or data-chunk boundary. Incomplete
+output is staged separately and removed, leaving the source and any existing
+destination untouched.
 
 ### Recreating the Codespace
 

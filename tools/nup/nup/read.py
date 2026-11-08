@@ -13,12 +13,43 @@ import hashlib
 import mmap
 import os
 import struct
-from typing import TYPE_CHECKING
+from typing import IO, TYPE_CHECKING
 
 from . import format as F
+from .errors import OperationCancelled
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from types import TracebackType
+
+
+class _MappedSliceReader:
+    """File-like view over one extent in an mmap, without copying the extent."""
+
+    __slots__ = ("_mapping", "_offset", "_size", "_position")
+
+    def __init__(self, mapping: mmap.mmap | bytes, offset: int, size: int) -> None:
+        self._mapping = mapping
+        self._offset = offset
+        self._size = size
+        self._position = 0
+
+    def read(self, size: int = -1) -> bytes:
+        if size is None or size < 0:
+            size = self._size - self._position
+        size = min(size, self._size - self._position)
+        start = self._offset + self._position
+        self._position += size
+        return self._mapping[start:start + size]
+
+    def readable(self) -> bool:
+        return True
+
+
+def _check_cancel(cancel: Callable[[], bool] | None) -> None:
+    if cancel is not None and cancel():
+        raise OperationCancelled("operation cancelled")
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,7 +84,7 @@ class NodeRef:
 
 class NupReader:
     __slots__ = ("path", "_fh", "_mm", "super", "dir_count", "file_count", "pool", "packages", "files", "dirs", "children")
-    def __init__(self, path: str) -> None:
+    def __init__(self, path: str, cancel: Callable[[], bool] | None = None) -> None:
         self.path = path
         self._fh = open(path, "rb")
         self._mm: mmap.mmap | bytes = b""
@@ -78,8 +109,8 @@ class NupReader:
             raw_toc = self._mm[toc_start:toc_start + self.super["toc_size"]]
             if hashlib.sha256(raw_toc).digest() != self.super["toc_sha256"]:
                 raise F.NupError("TOC SHA-256 mismatch - file corrupt or tampered")
-            self._parse_toc(raw_toc)
-            self._check_bounds()
+            self._parse_toc(raw_toc, cancel)
+            self._check_bounds(cancel)
         except BaseException:
             # Never leak an open handle/mmap: on Windows it locks the file
             # against rename/delete until GC.
@@ -106,7 +137,7 @@ class NupReader:
 
     # ---- TOC parsing ----
 
-    def _parse_toc(self, toc: bytes) -> None:
+    def _parse_toc(self, toc: bytes, cancel: Callable[[], bool] | None = None) -> None:
         magic, pkg_count, dir_count, file_count, pool_off, pool_size, _r = \
             F._toc_head_s.unpack_from(toc, 0)
         if magic != F.TOC_MAGIC:
@@ -127,6 +158,8 @@ class NupReader:
         pos = F._toc_head_s.size
         self.packages: list[PackageInfo] = []
         for i in range(pkg_count):
+            if i % 1024 == 0:
+                _check_cancel(cancel)
             p = F.parse_pkg(toc, pos)
             pos += F.PKG_SIZE
             self.packages.append(PackageInfo(
@@ -136,14 +169,18 @@ class NupReader:
                 meta_size=p.meta_size))
 
         self.dirs: list[tuple[bytes, int, int]] = []  # (name, first_child, child_count)
-        for _ in range(dir_count):
+        for i in range(dir_count):
+            if i % 1024 == 0:
+                _check_cancel(cancel)
             off, ln, first, count, _r2 = F._dir_s.unpack_from(toc, pos)
             pos += F.DIR_SIZE
             self.dirs.append((self._pool_str(off, ln), first, count))
 
         # (name, size, sha256, ext_off, ext_size, codec)
         self.files: list[tuple[bytes, int, bytes, int, int, F.Codec]] = []  
-        for _ in range(file_count):
+        for i in range(file_count):
+            if i % 1024 == 0:
+                _check_cancel(cancel)
             (off, ln), size, sha, eoff, esz, codec = F.parse_file(toc, pos)
             pos += F.FILE_SIZE
             self.files.append((self._pool_str(off, ln), size, sha, eoff, esz, codec))
@@ -158,10 +195,12 @@ class NupReader:
             raise F.NupError("string reference out of pool bounds")
         return self.pool[off:off + ln]
 
-    def _check_bounds(self) -> None:
+    def _check_bounds(self, cancel: Callable[[], bool] | None = None) -> None:
         file_size = self.super["file_size"]
         blob_start = self.super["blob_offset"]
-        for name, size, sha, eoff, esz, codec in self.files:
+        for i, (name, size, sha, eoff, esz, codec) in enumerate(self.files):
+            if i % 1024 == 0:
+                _check_cancel(cancel)
             if size == 0:
                 continue
             if eoff < blob_start or eoff + esz > file_size:
@@ -170,7 +209,9 @@ class NupReader:
                 raise F.NupError(f"extent not {F.EXTENT_ALIGN}-aligned for {name!r}")
         slot_total = len(self.children)
         used = 0
-        for name, first, count in self.dirs:
+        for i, (name, first, count) in enumerate(self.dirs):
+            if i % 1024 == 0:
+                _check_cancel(cancel)
             if first + count > slot_total:
                 raise F.NupError(f"child range out of bounds for dir {name!r}")
             used += count
@@ -189,7 +230,9 @@ class NupReader:
         # SPEC §3.1.2: update packages need a base in the same container, or
         # the standalone_update flag (record flags, offset 0x19, bit 0).
         has_base = any(p.kind == F.KIND_BASE for p in self.packages)
-        for p in self.packages:
+        for i, p in enumerate(self.packages):
+            if i % 1024 == 0:
+                _check_cancel(cancel)
             if (p.kind == F.KIND_UPDATE and not has_base
                     and not (p.flags & F.PKG_FLAG_STANDALONE_UPDATE)):
                 raise F.NupError(
@@ -205,6 +248,66 @@ class NupReader:
 
     def file_info(self, file_index: int) -> tuple[bytes, int, bytes, int, int, F.Codec]:
         return self.files[file_index]
+
+    def copy_file(
+        self,
+        file_index: int,
+        output: IO[bytes],
+        cancel: Callable[[], bool] | None = None,
+    ) -> int:
+        """Stream an extracted file to output, checking cancellation per chunk."""
+        name, size, expected_hash, extent_offset, extent_size, codec = self.files[file_index]
+        digest = hashlib.sha256()
+        written = 0
+
+        def check_cancel() -> None:
+            if cancel is not None and cancel():
+                raise OperationCancelled("operation cancelled")
+
+        def write_chunk(chunk: bytes) -> None:
+            nonlocal written
+            if written + len(chunk) > size:
+                raise F.NupError(f"size overflow while extracting {name!r}")
+            output.write(chunk)
+            digest.update(chunk)
+            written += len(chunk)
+
+        if codec == F.CODEC_RAW:
+            if extent_size != size:
+                raise F.NupError(
+                    f"raw extent size {extent_size} != file size {size} for {name!r}")
+            while written < size:
+                check_cancel()
+                chunk = self._mm[extent_offset + written:
+                                 extent_offset + min(size, written + (4 << 20))]
+                if not chunk:
+                    raise F.NupError(f"short read for {name!r}")
+                write_chunk(chunk)
+        elif codec == F.CODEC_ZSTD:
+            import zstandard
+
+            source = _MappedSliceReader(self._mm, extent_offset, extent_size)
+            try:
+                with zstandard.ZstdDecompressor().stream_reader(
+                    source, read_size=4 << 20, closefd=False,
+                ) as decompressed:
+                    while True:
+                        check_cancel()
+                        chunk = decompressed.read(4 << 20)
+                        if not chunk:
+                            break
+                        write_chunk(chunk)
+            except zstandard.ZstdError as exc:
+                raise F.NupError(f"decompression failed for {name!r}: {exc}") from exc
+        else:
+            raise F.NupError(f"unknown codec {codec}")
+
+        check_cancel()
+        if written != size:
+            raise F.NupError(f"size mismatch for {name!r}: {written} != {size}")
+        if digest.digest() != expected_hash:
+            raise F.NupError(f"SHA-256 mismatch for {name!r}")
+        return written
 
     def read_file(self, file_index: int) -> bytes:
         name, size, sha, eoff, esz, codec = self.files[file_index]

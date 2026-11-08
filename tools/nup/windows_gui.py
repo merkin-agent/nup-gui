@@ -10,9 +10,8 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
-from nup.access import extract_dump
-from nup.pack import pack
-from nup.read import NupReader
+from nup.errors import OperationCancelled
+from nup.operations import pack_atomic, unpack_atomic
 
 
 ICON_RELATIVE_PATH = Path("assets") / "NUP_GUI_Packager.ico"
@@ -30,6 +29,7 @@ class NupPackagerApp:
         self.root = root
         self.events: queue.Queue[tuple[str, str, str, str]] = queue.Queue()
         self.busy = False
+        self.cancel_event: threading.Event | None = None
         self.progress_mode = "indeterminate"
         self.mode = tk.StringVar(value="pack")
         self.source = tk.StringVar()
@@ -80,6 +80,9 @@ class NupPackagerApp:
 
         self.action_button = ttk.Button(root, command=self.start_operation)
         self.action_button.grid(row=5, column=2, sticky="e", padx=8, pady=10)
+        self.cancel_button = ttk.Button(root, text="Cancel", command=self.cancel_operation)
+        self.cancel_button.grid(row=5, column=1, sticky="e", padx=8, pady=10)
+        self.cancel_button.grid_remove()
         self.update_mode()
         self.root.after(100, self.drain_events)
 
@@ -171,24 +174,40 @@ class NupPackagerApp:
             if not source.is_file():
                 messagebox.showerror("NUP Packager", "Choose an existing .nup file.", parent=self.root)
                 return
-            if output.exists() and (not output.is_dir() or any(output.iterdir())):
+            if output.exists():
                 messagebox.showerror(
-                    "NUP Packager", "Choose a new or empty output folder. Existing files are not overwritten.",
+                    "NUP Packager", "Choose a new output folder. Existing folders are not overwritten.",
                     parent=self.root,
                 )
                 return
 
         self.busy = True
+        self.cancel_event = threading.Event()
         self._set_controls_enabled(False)
+        self.cancel_button.configure(text="Cancel", state="normal")
+        self.cancel_button.grid()
         self.status.set("Scanning dump contents..." if mode == "pack" else "Reading NUP package...")
         self.progress.configure(mode="indeterminate")
         self.progress.grid()
         self.progress.start(12)
         threading.Thread(
-            target=self.operation_worker, args=(mode, source, output), daemon=True,
+            target=self.operation_worker, args=(mode, source, output, self.cancel_event), daemon=True,
         ).start()
 
-    def operation_worker(self, mode: str, source: Path, output: Path) -> None:
+    def cancel_operation(self) -> None:
+        if self.cancel_event is None or self.cancel_event.is_set():
+            return
+        self.cancel_event.set()
+        self.cancel_button.configure(text="Cancelling...", state="disabled")
+        self.status.set("Cancelling at the next safe checkpoint and removing temporary output...")
+
+    def operation_worker(
+        self,
+        mode: str,
+        source: Path,
+        output: Path,
+        cancel_event: threading.Event,
+    ) -> None:
         last_report = 0.0
 
         def report(done: int, total: int, file_name: str) -> None:
@@ -201,10 +220,22 @@ class NupPackagerApp:
 
         try:
             if mode == "pack":
-                pack(str(output), str(source), keep_listings=True, progress=report)
+                def pack_progress(done: int, total: int, file_node: object) -> None:
+                    raw_name = getattr(file_node, "name", b"")
+                    name = raw_name.decode("utf-8", "replace") if isinstance(raw_name, bytes) else str(raw_name)
+                    report(done, total, name)
+
+                pack_atomic(
+                    str(output), str(source), keep_listings=True,
+                    progress=pack_progress, cancel=cancel_event.is_set,
+                )
             else:
-                with NupReader(str(source)) as reader:
-                    extract_dump(reader, str(output), report)
+                unpack_atomic(
+                    str(source), str(output), progress=report,
+                    cancel=cancel_event.is_set,
+                )
+        except OperationCancelled:
+            self.events.put(("cancelled", "", "", str(output)))
         except (Exception, SystemExit) as exc:
             self.events.put(("error", "", "", f"{type(exc).__name__}: {exc}"))
         else:
@@ -233,6 +264,9 @@ class NupPackagerApp:
                     self.finish_operation()
                     self.status.set("Operation failed.")
                     messagebox.showerror("NUP operation failed", detail, parent=self.root)
+                elif kind == "cancelled":
+                    self.finish_operation()
+                    self.status.set("Cancelled. Temporary output removed; original files are unchanged.")
         except queue.Empty:
             pass
         try:
@@ -245,6 +279,9 @@ class NupPackagerApp:
         self.progress.grid_remove()
         self.progress_mode = "indeterminate"
         self.busy = False
+        self.cancel_event = None
+        self.cancel_button.configure(text="Cancel", state="disabled")
+        self.cancel_button.grid_remove()
         self._set_controls_enabled(True)
 
     def _set_controls_enabled(self, enabled: bool) -> None:
@@ -254,6 +291,7 @@ class NupPackagerApp:
             self.output_entry, self.output_button, self.action_button,
         ):
             control.configure(state=state)
+        self.cancel_button.configure(state="disabled" if enabled else "normal")
 
     def close(self) -> None:
         if self.busy:

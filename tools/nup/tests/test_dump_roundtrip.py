@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import hashlib
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 
 from nup.access import extract_dump
+from nup.errors import OperationCancelled
+from nup.operations import pack_atomic, unpack_atomic
 from nup.pack import pack
 from nup.read import NupReader
 
@@ -72,6 +75,56 @@ class DumpRoundTripTests(unittest.TestCase):
                 for path in restored_again.rglob("*") if path.is_dir()
             }
             self.assertEqual(source_dirs, restored_again_dirs)
+
+    def test_cancel_pack_removes_partial_output_and_preserves_source(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            work = Path(temporary)
+            source = work / "source"
+            for name, data in (("one.bin", b"one"), ("two.bin", b"two")):
+                path = source / "base" / "romfs" / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(data)
+            original_hashes = file_hashes(source)
+            cancel = threading.Event()
+
+            def stop_after_first_file(done: int, _total: int, _node: object) -> None:
+                if done == 1:
+                    cancel.set()
+
+            output = work / "cancelled.nup"
+            with self.assertRaises(OperationCancelled):
+                pack_atomic(str(output), str(source), progress=stop_after_first_file,
+                            cancel=cancel.is_set)
+
+            self.assertFalse(output.exists())
+            self.assertEqual(file_hashes(source), original_hashes)
+            self.assertFalse(any(work.glob(".nup-pack-*")))
+
+    def test_cancel_unpack_removes_partial_output_and_preserves_package(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            work = Path(temporary)
+            source = work / "source"
+            for name, data in (("one.bin", b"one"), ("two.bin", b"two")):
+                path = source / "base" / "romfs" / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(data)
+            package = work / "input.nup"
+            pack(str(package), str(source), keep_listings=True)
+            original_package_hash = hashlib.sha256(package.read_bytes()).digest()
+            cancel = threading.Event()
+
+            def stop_after_first_file(done: int, _total: int, _name: str) -> None:
+                if done == 1:
+                    cancel.set()
+
+            output = work / "cancelled-dump"
+            with self.assertRaises(OperationCancelled):
+                unpack_atomic(str(package), str(output), progress=stop_after_first_file,
+                              cancel=cancel.is_set)
+
+            self.assertFalse(output.exists())
+            self.assertEqual(hashlib.sha256(package.read_bytes()).digest(), original_package_hash)
+            self.assertFalse(any(work.glob(".nup-unpack-*")))
 
 
 if __name__ == "__main__":
