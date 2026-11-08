@@ -1,4 +1,8 @@
 __pycache__/
 *.pyc
 *.egg-info/
+dist/
+nup.spec
+tools/nup/build-win/
+tools/nup/launcher/nup.exe
 ATHOME.md

@@ -26,6 +26,39 @@ pip install ./tools/nup          # or: PYTHONPATH=tools/nup python3 -m nup.cli
 nup --help                       # overview of every subcommand
 ```
 
+### Windows executable
+
+The repository builds Windows x64 executables. On Windows, run
+`tools/nup/build_windows.ps1`; from the configured Linux devcontainer, run
+`tools/nup/build_wine.sh`. Both write `dist/nup.exe` (CLI) and
+`dist/nup-gui.exe` (desktop packager). You can also run the **Build Windows
+executable** workflow in GitHub Actions and download both from its
+`nup-windows-x64` artifact.
+
+For example, in Command Prompt or PowerShell:
+
+```
+nup.exe pack "D:\Switch2\My Game Dump" "D:\Switch2\My Game.nup"
+nup.exe info "D:\Switch2\My Game.nup"
+```
+
+For the desktop interface, launch `nup-gui.exe`, choose the dump parent folder
+and output `.nup` path, then select **Create NUP**. The GUI packages the same
+directory layouts as `nup.exe pack` and shows progress while it runs.
+
+### Recreating the Codespace
+
+The `.devcontainer/` definition describes the Python and Wine build environment.
+After it is committed and pushed, a recreated Codespace can rebuild that
+environment from the repository. Commit or push source changes and any
+important build artifacts before deleting a Codespace; the devcontainer
+definition cannot recover uncommitted files from a deleted workspace.
+
+`pack` accepts the documented `base/`, `updates/`, and `dlc/` bundle layout,
+or a single content directory containing `exefs/` and/or `romfs/`. The dump
+must already be decrypted; this tool packages files and does not decrypt game
+content.
+
 ### Packing a dump
 
 `pack` discovers packages by directory layout:

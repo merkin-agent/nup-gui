@@ -1,0 +1,28 @@
+name: Build Windows executable
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.x'
+      - name: Build nup.exe
+        shell: pwsh
+        run: ./tools/nup/build_windows.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nup-windows-x64
+          path: |
+            dist/nup.exe
+            dist/nup-gui.exe
+          if-no-files-found: error
