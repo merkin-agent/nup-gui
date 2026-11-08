@@ -47,12 +47,12 @@ class NupPackagerApp:
             pass
 
         self.pack_radio = ttk.Radiobutton(
-            root, text="Pack dump to .nup", variable=self.mode, value="pack",
+            root, text="Pack .nup", variable=self.mode, value="pack",
             command=self.update_mode,
         )
         self.pack_radio.grid(row=0, column=0, sticky="w", padx=8, pady=(10, 4))
         self.unpack_radio = ttk.Radiobutton(
-            root, text="Unpack .nup to dump", variable=self.mode, value="unpack",
+            root, text="Unpack .nup", variable=self.mode, value="unpack",
             command=self.update_mode,
         )
         self.unpack_radio.grid(row=0, column=1, sticky="w", padx=8, pady=(10, 4))
@@ -122,7 +122,7 @@ class NupPackagerApp:
             self.source.set(selected)
             if not self.output.get():
                 source = Path(selected)
-                self.output.set(str(source.parent / f"{source.stem}_dump"))
+                self.output.set(str(source.parent / source.stem))
 
     def browse_output(self) -> None:
         if self.mode.get() == "pack":
@@ -142,7 +142,7 @@ class NupPackagerApp:
             )
             if selected:
                 stem = Path(self.source.get()).stem if self.source.get() else "restored"
-                selected = str(Path(selected) / f"{stem}_dump")
+                selected = str(Path(selected) / stem)
         if selected:
             self.output.set(selected)
 
