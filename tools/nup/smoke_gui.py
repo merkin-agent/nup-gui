@@ -44,7 +44,13 @@ def main() -> None:
         children: list[int] = []
         callback_type = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
         callback = callback_type(lambda child, _data: children.append(child) or True)
-        user32.EnumChildWindows(hwnd, callback, 0)
+        controls_deadline = time.monotonic() + 5
+        while time.monotonic() < controls_deadline:
+            children.clear()
+            user32.EnumChildWindows(hwnd, callback, 0)
+            if len(children) >= 5:
+                break
+            time.sleep(0.1)
         if len(children) < 5:
             raise RuntimeError(f"GUI opened with only {len(children)} child controls")
 
