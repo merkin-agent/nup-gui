@@ -31,9 +31,9 @@ nup --help                       # overview of every subcommand
 The repository builds Windows x64 executables. On Windows, run
 `tools/nup/build_windows.ps1`; from the configured Linux devcontainer, run
 `tools/nup/build_wine.sh`. Both write `dist/nup.exe` (CLI) and
-`dist/nup-gui.exe` (desktop packager). You can also run the **Build Windows
-executable** workflow in GitHub Actions and download both from its
-`nup-windows-x64` artifact, or get the packaged files from
+`dist/nup-gui.exe` (desktop packager), plus
+`dist/nup-gui-windows-x64.zip`, which contains only the GUI executable. The
+GitHub Actions workflow uploads this GUI ZIP, and releases publish that ZIP at
 [GitHub Releases](https://github.com/voluptuary/nup/releases/latest).
 
 The build omits Python's unused OpenSSL/TLS modules and uses its built-in

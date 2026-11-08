@@ -77,7 +77,7 @@ root_win="$(winpath "$repo_root")"
 dist_win="$(winpath "$dist_dir")"
 work_win="$(winpath "$work_dir")"
 mkdir -p "$work_dir"
-rm -f "$dist_dir/nup.exe" "$dist_dir/nup-gui.exe"
+rm -f "$dist_dir/nup.exe" "$dist_dir/nup-gui.exe" "$dist_dir/nup-gui-windows-x64.zip"
 
 # NUP only uses SHA-256; Python's built-in SHA implementation replaces OpenSSL.
 "$wine_bin" "$python_win" -m PyInstaller \
@@ -96,4 +96,15 @@ GOOS=windows GOARCH=amd64 go build -ldflags='-H windowsgui' \
   -o "$dist_dir/nup-gui.exe" "$launcher_dir/main_windows.go"
 "$upx_linux_dir/upx" --best "$dist_dir/nup-gui.exe"
 
+python3 - "$dist_dir" <<'PY'
+import sys
+from pathlib import Path
+from zipfile import ZIP_DEFLATED, ZipFile
+
+dist = Path(sys.argv[1])
+with ZipFile(dist / "nup-gui-windows-x64.zip", "w", ZIP_DEFLATED, compresslevel=9) as archive:
+    archive.write(dist / "nup-gui.exe", "nup-gui.exe")
+PY
+
 file "$dist_dir/nup.exe" "$dist_dir/nup-gui.exe"
+ls -lh "$dist_dir/nup-gui-windows-x64.zip"

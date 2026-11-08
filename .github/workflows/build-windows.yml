@@ -21,8 +21,6 @@ jobs:
         run: ./tools/nup/build_windows.ps1
       - uses: actions/upload-artifact@v4
         with:
-          name: nup-windows-x64
-          path: |
-            dist/nup.exe
-            dist/nup-gui.exe
+          name: nup-gui-windows-x64
+          path: dist/nup-gui-windows-x64.zip
           if-no-files-found: error

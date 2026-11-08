@@ -25,7 +25,7 @@ $upxExe = Join-Path $upxDir 'upx.exe'
 
 if (Test-Path $buildDir) { Remove-Item $buildDir -Recurse -Force }
 New-Item -ItemType Directory -Force -Path $distDir | Out-Null
-foreach ($name in @('nup.exe', 'nup-gui.exe')) {
+foreach ($name in @('nup.exe', 'nup-gui.exe', 'nup-gui-windows-x64.zip')) {
   $oldExe = Join-Path $distDir $name
   if (Test-Path $oldExe) { Remove-Item $oldExe -Force }
 }
@@ -67,4 +67,8 @@ try {
   if (Test-Path $stagedCli) { Remove-Item $stagedCli -Force }
 }
 
-Write-Host "Built $distDir/nup.exe and $distDir/nup-gui.exe"
+Compress-Archive -LiteralPath (Join-Path $distDir 'nup-gui.exe') `
+  -DestinationPath (Join-Path $distDir 'nup-gui-windows-x64.zip') `
+  -CompressionLevel Optimal
+
+Write-Host "Built $distDir/nup-gui-windows-x64.zip"
