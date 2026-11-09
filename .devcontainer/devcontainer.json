@@ -1,5 +1,6 @@
 {
   "name": "NUP Windows build environment",
+  // Trigger rebuild prompt
   "build": {
     "dockerfile": "Dockerfile"
   },

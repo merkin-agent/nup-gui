@@ -17,3 +17,5 @@ RUN dpkg --add-architecture i386 \
         xauth \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
+
+# Trigger rebuild prompt check
