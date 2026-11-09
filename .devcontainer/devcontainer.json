@@ -4,7 +4,7 @@
   "build": {
     "dockerfile": "Dockerfile"
   },
-  "postCreateCommand": "python -m pip install --user -e ./tools/nup",
+  "postCreateCommand": "sudo dpkg --add-architecture i386 && sudo apt-get update && DEBIAN_FRONTEND=noninteractive sudo apt-get install -y --no-install-recommends ca-certificates curl git unzip file wine wine64 wine32 xvfb xauth && python -m pip install --user -e ./tools/nup",
   "remoteUser": "vscode",
   "customizations": {
     "vscode": {

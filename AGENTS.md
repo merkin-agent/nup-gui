@@ -4,8 +4,8 @@
 
 When you change the Codespace, devcontainer, Windows build, Python version,
 dependencies, artifact paths, or validation workflow, update this file in the
-same change. Future agents should check these instructions before building and
-revise them whenever they learn a recovery step that is not documented here.
+same change. Future agents should check these instructions and read `PROGRESS.md`
+before building and revise them whenever they learn a recovery step that is not documented here.
 
 ## Project map
 
@@ -62,19 +62,14 @@ PYTHONPATH=tools/nup python -m unittest discover -s tools/nup/tests -v
    WINEPREFIX="$HOME/.cache/nup-wine64" tools/nup/build_wine.sh
    ```
 
-   The script selects `/usr/lib/wine/wine64` when available and starts itself
-   under `xvfb-run` when no display is set. Wine 9 does not implement
-   `CopyFile2`; during pip installation only, the script temporarily disables
-   Python's `shutil` fast-copy call and restores the original standard library
-   before PyInstaller runs. If the Windows Python installation in
-   `/tmp/nup-windows-build/python` is already complete, set
-   `NUP_WIN_REUSE_PYTHON=1` to reuse it rather than reinstalling Python.
+   The build script uses the official Python embeddable x64 zip package and
+   `get-pip.py`, completely bypassing the MSI installer engine and avoiding
+   any Wine 9 stack overflow or debugger prompt issues. It runs headlessly under
+   `xvfb-run` with `WINEDLLOVERRIDES="mscoree,mshtml="`.
 
-The build uses Windows Python 3.12.10 and follows the 0.1.9 release's
-PyInstaller options: one-file, windowed, no UPX, collect `zstandard`, bundle
-the GUI icon, and exclude unused SSL modules. PyInstaller and Python packaging
-dependencies are intentionally installed the same way as in
-`build_windows.ps1` (not pinned to a different release profile).
+The build uses Windows Python 3.12.10 and follows PyInstaller options:
+one-file, windowed, no UPX, collect `zstandard`, bundle the GUI icon, and
+exclude unused SSL modules.
 
 ## Build outputs and checks
 
@@ -84,14 +79,14 @@ The Wine build writes:
 - `dist/nup-gui-windows-x64.zip` — ZIP containing only `nup-gui.exe`.
 
 Check the output with `file dist/nup-gui.exe` and
-`unzip -l dist/nup-gui-windows-x64.zip`. A headless GUI startup check can be
-run with Wine under Xvfb; allow it to remain open briefly, then terminate it.
-`tools/nup/smoke_gui.py` uses Windows-only `ctypes` APIs and is intended for the
-Windows CI runner, not the Linux Wine host.
+`unzip -l dist/nup-gui-windows-x64.zip`.
 
 The NUP application icon is stored in metadata TLV `0x0003`. Packing accepts
 explicit `-i/--icon` or detects common artwork and Switch `icon_*.dat` files;
-GUI packaging also accepts a title and display version. Keep metadata injection
-and unpack extraction behavior aligned across the CLI and GUI. Legacy packages
+GUI packaging (`nup-gui`) also supports auto-discovering metadata from dumps,
+importing metadata from other `.nup` packages or dumps, editing/replacing metadata
+items, format validation for icon files, uniform entry sizing (`width=45`), and
+right-click context menus (`Cut`, `Copy`, `Paste`, `Select All`). Keep metadata
+injection and unpack extraction behavior aligned across the CLI and GUI. Legacy packages
 without artwork must remain extractable and should report a missing-artwork
 warning rather than losing their package tree.
