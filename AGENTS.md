@@ -37,7 +37,11 @@ PYTHONPATH=tools/nup python -m unittest discover -s tools/nup/tests -v
    `git show <commit>:.devcontainer/devcontainer.json`. The repository's
    devcontainer installs Python 3.12, multiarch Wine (32-bit and 64-bit), and
    Xvfb for headless Windows builds. After restoring it, use **Codespaces:
-   Rebuild Container** so the Dockerfile and `postCreateCommand` run.
+   Rebuild Container** so the Dockerfile and `postCreateCommand` run. The
+   active configuration must be in `.devcontainer/`, and the Dockerfile must
+   be named exactly `Dockerfile` because `devcontainer.json` refers to that
+   path. A backup folder such as `bad-devcontainer/` is not discovered by
+   Codespaces.
 3. If the devcontainer cannot be rebuilt, bootstrap the host environment on
    Ubuntu/Debian with:
 
